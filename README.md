@@ -102,6 +102,12 @@ ComfyUI/custom_nodes/ComfyUI-DynaTrain
 
 Then restart ComfyUI.
 
+If you are developing this node pack outside an existing ComfyUI Python environment:
+
+```bash
+pip install -r requirements.txt
+```
+
 ## Example Workflow Shape
 
 1. Run `Dataset Sanity Check`.

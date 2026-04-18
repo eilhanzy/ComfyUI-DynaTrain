@@ -1,0 +1,5 @@
+# Minimal add-on dependencies for local development of this custom node pack.
+# ComfyUI itself is expected to provide the runtime torch stack.
+
+numpy>=1.26
+Pillow>=10.0
