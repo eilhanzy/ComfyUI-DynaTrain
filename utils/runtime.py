@@ -7,6 +7,10 @@ from typing import Any, Dict
 
 
 PREVIEW_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+STEP_PATTERNS = [
+    re.compile(r"\bstep\s*[:=]\s*([0-9]+)", re.IGNORECASE),
+    re.compile(r"\biter(?:ation)?\s*[:=]\s*([0-9]+)", re.IGNORECASE),
+]
 LOSS_PATTERNS = [
     re.compile(r"\bloss\s*[:=]\s*([0-9]*\.?[0-9]+(?:[eE][+-]?[0-9]+)?)", re.IGNORECASE),
     re.compile(r"\bloss\b[^0-9-+]*([0-9]*\.?[0-9]+(?:[eE][+-]?[0-9]+)?)", re.IGNORECASE),
@@ -66,22 +70,46 @@ def log_tail(log_path: str, max_chars: int = 4000) -> str:
 
 
 def latest_loss(log_path: str) -> Dict[str, Any]:
-    if not log_path:
+    history = loss_history(log_path)
+    if not history:
         return {"latest_loss": None, "latest_loss_line": ""}
+    latest_point = history[-1]
+    return {"latest_loss": latest_point["loss"], "latest_loss_line": latest_point["line"]}
+
+
+def loss_history(log_path: str) -> list[Dict[str, Any]]:
+    if not log_path:
+        return []
 
     path = Path(log_path)
     if not path.exists():
-        return {"latest_loss": None, "latest_loss_line": ""}
+        return []
 
-    last_value = None
-    last_line = ""
-    for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+    points: list[Dict[str, Any]] = []
+    for index, line in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), start=1):
         for pattern in LOSS_PATTERNS:
             match = pattern.search(line)
             if match:
                 try:
-                    last_value = float(match.group(1))
-                    last_line = line.strip()
+                    loss_value = float(match.group(1))
                 except ValueError:
                     continue
-    return {"latest_loss": last_value, "latest_loss_line": last_line}
+                step_value = index
+                for step_pattern in STEP_PATTERNS:
+                    step_match = step_pattern.search(line)
+                    if step_match:
+                        try:
+                            step_value = int(step_match.group(1))
+                        except ValueError:
+                            step_value = index
+                        break
+                points.append(
+                    {
+                        "index": index,
+                        "step": step_value,
+                        "loss": loss_value,
+                        "line": line.strip(),
+                    }
+                )
+                break
+    return points

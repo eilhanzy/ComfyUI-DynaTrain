@@ -24,6 +24,8 @@ The current implementation wraps a configurable trainer backend shape inspired b
   Workflow-oriented LoRA training spec node with direct `lora`, `loss_map`, and `steps` outputs.
 - `Train LoRA Advanced`
   Advanced training-spec node with direct `lora`, `preview_image`, `loss_map`, and `steps` outputs.
+- `Plot Loss Graph`
+  Turns a `loss_map` payload into a rendered loss chart image and saves a PNG copy under the runtime folder.
 - `Training Job Status`
   Reads job metadata, log tail, preview information, and latest loss.
 - `Save LoRA Weights`
@@ -116,7 +118,8 @@ pip install -r requirements.txt
 4. Build a preview config with `Sample Preview During Training`.
 5. Send those outputs into `Train LoRA Advanced`.
 6. Send `lora` into `Save LoRA Weights`.
-7. Optionally send `lora` or `train_job` into `Training Job Status`.
+7. Optionally send `loss_map` into `Plot Loss Graph`.
+8. Optionally send `lora` or `train_job` into `Training Job Status`.
 
 ## Development
 

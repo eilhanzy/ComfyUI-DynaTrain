@@ -34,24 +34,27 @@ class DynaTrainTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.package = load_package()
-        from dynatrain.nodes import SaveLoRAWeightsNode, TrainLoRAAdvancedNode, TrainLoRANode
+        from dynatrain.nodes import PlotLossGraphNode, SaveLoRAWeightsNode, TrainLoRAAdvancedNode, TrainLoRANode
         from dynatrain.trainers.lora_train_advanced import (
             build_lora_payload,
             build_loss_map,
             get_job_status,
             prepare_training_run,
         )
+        from dynatrain.utils.runtime import loss_history
         from dynatrain.trainers.precision_planner import plan_precision
         from dynatrain.trainers.preview_runner import build_preview_config
         from dynatrain.validators.caption_pairs import validate_caption_pairs
         from dynatrain.validators.dataset_sanity import summarize_dataset
 
+        cls.PlotLossGraphNode = PlotLossGraphNode
         cls.SaveLoRAWeightsNode = SaveLoRAWeightsNode
         cls.TrainLoRAAdvancedNode = TrainLoRAAdvancedNode
         cls.TrainLoRANode = TrainLoRANode
         cls.build_lora_payload = staticmethod(build_lora_payload)
         cls.build_loss_map = staticmethod(build_loss_map)
         cls.get_job_status = staticmethod(get_job_status)
+        cls.loss_history = staticmethod(loss_history)
         cls.prepare_training_run = staticmethod(prepare_training_run)
         cls.plan_precision = staticmethod(plan_precision)
         cls.build_preview_config = staticmethod(build_preview_config)
@@ -64,6 +67,7 @@ class DynaTrainTests(unittest.TestCase):
         self.assertIn("DynaTrainTrainLoRAAdvanced", names)
         self.assertIn("DynaTrainTrainLoRA", names)
         self.assertIn("DynaTrainSaveLoRAWeights", names)
+        self.assertIn("DynaTrainPlotLossGraph", names)
 
     def test_dataset_empty_blocks(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -484,6 +488,56 @@ class DynaTrainTests(unittest.TestCase):
                 self.assertEqual(saved_lora["weights_path"], saved_path)
             finally:
                 os.environ.pop("DYNATRAIN_LORAS_DIR", None)
+
+    def test_plot_loss_graph_node_saves_graph(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dataset = self._make_validated_dataset(tmp)
+            precision = self._make_precision()
+            preview = self.build_preview_config(
+                enabled=True,
+                sample_every_n_steps=10,
+                sample_prompts="portrait photo",
+                sampler="euler_a",
+                sample_steps=20,
+                cfg_scale=7.0,
+                seed=42,
+            )
+            runtime_root = str(Path(tmp) / "runtime")
+            job = self.prepare_training_run(
+                validated_dataset=dataset,
+                precision_plan=precision,
+                preview_config=preview,
+                base_model_path="/models/base.safetensors",
+                output_dir=str(Path(tmp) / "out"),
+                output_name="graph_case",
+                backend_workdir=str(REPO_ROOT),
+                python_executable=sys.executable,
+                entrypoint_mode="module",
+                module_name="tests.fake_onetrainer_backend",
+                script_path="",
+                network_dim=16,
+                network_alpha=16,
+                learning_rate=1e-4,
+                max_train_steps=33,
+                lr_scheduler="cosine",
+                resolution_x=512,
+                resolution_y=512,
+                batch_size_override=0,
+                gradient_accumulation_override=0,
+                execute=True,
+                extra_args="",
+                runtime_root=runtime_root,
+            )
+            resolved = self._wait_for_job(job, runtime_root)
+            loss_map = self.build_loss_map(resolved)
+            history = self.loss_history(loss_map["log_path"])
+            self.assertEqual(len(history), 3)
+            plot_node = self.PlotLossGraphNode()
+            graph_image, saved_path, summary = plot_node.run(loss_map, "loss_graph/test")
+        self.assertIsNone(graph_image)
+        self.assertTrue(Path(saved_path).exists())
+        self.assertTrue(saved_path.endswith(".png"))
+        self.assertIn("\"points\": 3", summary)
 
     def test_background_job_and_status_failure(self):
         with tempfile.TemporaryDirectory() as tmp:

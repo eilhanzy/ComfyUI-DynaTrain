@@ -16,7 +16,7 @@ from .trainers.precision_planner import plan_precision
 from .trainers.preview_runner import build_preview_config
 from .utils.comfy_paths import list_lora_files
 from .utils.lora_io import save_lora_weights
-from .utils.runtime import default_runtime_root
+from .utils.runtime import default_runtime_root, loss_history
 from .validators.caption_pairs import validate_caption_pairs
 from .validators.dataset_sanity import summarize_dataset
 
@@ -95,6 +95,95 @@ def _resolve_preview_image(latest_preview_path: str, fallback_text: str):
             with Image.open(candidate) as image:
                 return _pil_to_comfy_image(image)
     return _render_preview_placeholder("DynaTrain Preview", fallback_text)
+
+
+def _render_loss_graph(points: list[Dict[str, Any]], title: str):
+    try:
+        from PIL import Image, ImageDraw
+    except ImportError:
+        return None, None
+
+    width = 1024
+    height = 576
+    margin_left = 84
+    margin_right = 36
+    margin_top = 56
+    margin_bottom = 72
+    image = Image.new("RGB", (width, height), color=(23, 25, 30))
+    draw = ImageDraw.Draw(image)
+    draw.rounded_rectangle((18, 18, width - 18, height - 18), radius=20, fill=(34, 37, 45))
+    draw.text((40, 34), title, fill=(224, 232, 241))
+
+    if not points:
+        draw.text((40, 120), "No loss samples found in the provided loss_map/log.", fill=(210, 170, 170))
+        return image, _pil_to_comfy_image(image)
+
+    graph_left = margin_left
+    graph_top = margin_top
+    graph_right = width - margin_right
+    graph_bottom = height - margin_bottom
+    draw.rectangle((graph_left, graph_top, graph_right, graph_bottom), outline=(88, 96, 110), width=1)
+
+    min_loss = min(point["loss"] for point in points)
+    max_loss = max(point["loss"] for point in points)
+    if max_loss == min_loss:
+        max_loss = min_loss + 1.0
+
+    step_min = min(point["step"] for point in points)
+    step_max = max(point["step"] for point in points)
+    if step_max == step_min:
+        step_max = step_min + 1
+
+    for grid_index in range(5):
+        y = graph_top + int((graph_bottom - graph_top) * (grid_index / 4))
+        draw.line((graph_left, y, graph_right, y), fill=(58, 63, 74), width=1)
+        value = max_loss - ((max_loss - min_loss) * (grid_index / 4))
+        draw.text((24, y - 8), f"{value:.4f}", fill=(166, 176, 190))
+
+    polyline: list[tuple[int, int]] = []
+    for point in points:
+        x_ratio = (point["step"] - step_min) / (step_max - step_min)
+        y_ratio = (point["loss"] - min_loss) / (max_loss - min_loss)
+        x = graph_left + int((graph_right - graph_left) * x_ratio)
+        y = graph_bottom - int((graph_bottom - graph_top) * y_ratio)
+        polyline.append((x, y))
+
+    if len(polyline) == 1:
+        x, y = polyline[0]
+        draw.ellipse((x - 4, y - 4, x + 4, y + 4), fill=(109, 226, 168))
+    else:
+        draw.line(polyline, fill=(109, 226, 168), width=3)
+        for x, y in polyline[-3:]:
+            draw.ellipse((x - 4, y - 4, x + 4, y + 4), fill=(222, 246, 233))
+
+    draw.text((graph_left, height - 46), f"steps: {step_min} -> {step_max}", fill=(166, 176, 190))
+    draw.text((graph_right - 160, height - 46), f"latest loss: {points[-1]['loss']:.4f}", fill=(166, 176, 190))
+    return image, _pil_to_comfy_image(image)
+
+
+def _save_loss_graph_image(image: Any, filename_prefix: str, loss_map: Dict[str, Any]) -> str:
+    if image is None:
+        return ""
+
+    runtime_root = default_runtime_root()
+    target_dir = runtime_root / "loss_graphs"
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    normalized_prefix = filename_prefix.strip() or "loss_graph"
+    normalized_prefix = normalized_prefix.lstrip("/").replace("\\", "/")
+    if normalized_prefix.startswith("loss_graphs/"):
+        normalized_prefix = normalized_prefix[len("loss_graphs/") :]
+
+    relative_path = Path(normalized_prefix)
+    if relative_path.suffix.lower() != ".png":
+        job_id = loss_map.get("job_id", "").strip()
+        suffix = f"_{job_id}" if job_id else ""
+        relative_path = Path(f"{relative_path}{suffix}.png")
+
+    full_path = target_dir / relative_path
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    image.save(full_path, format="PNG")
+    return str(full_path)
 
 
 class DatasetSanityCheckNode:
@@ -612,6 +701,38 @@ class SaveLoRAWeightsNode:
         return saved_lora, saved_lora["saved_path"], summary
 
 
+class PlotLossGraphNode:
+    CATEGORY = "DynaTrain/Training"
+    FUNCTION = "run"
+    RETURN_TYPES = ("IMAGE", "STRING", "STRING")
+    RETURN_NAMES = ("graph_image", "saved_path", "summary")
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "loss": ("DYNA_LOSS_MAP",),
+                "filename_prefix": ("STRING", {"default": "loss_graph"}),
+            }
+        }
+
+    def run(self, loss: Dict[str, Any], filename_prefix: str) -> Tuple[Any, str, str]:
+        points = loss_history(loss.get("log_path", ""))
+        title = f"Loss Graph - {loss.get('job_id', 'unknown-job')}"
+        image, comfy_image = _render_loss_graph(points, title)
+        saved_path = _save_loss_graph_image(image, filename_prefix, loss)
+        summary = _to_pretty_json(
+            {
+                "job_id": loss.get("job_id", ""),
+                "points": len(points),
+                "saved_path": saved_path,
+                "latest_loss": loss.get("latest_loss"),
+                "status": loss.get("status", ""),
+            }
+        )
+        return comfy_image, saved_path, summary
+
+
 class TrainingJobStatusNode:
     CATEGORY = "DynaTrain/Training"
     FUNCTION = "run"
@@ -676,6 +797,7 @@ NODE_CLASS_MAPPINGS = {
     "DynaTrainTrainLoRA": TrainLoRANode,
     "DynaTrainTrainLoRAAdvanced": TrainLoRAAdvancedNode,
     "DynaTrainSaveLoRAWeights": SaveLoRAWeightsNode,
+    "DynaTrainPlotLossGraph": PlotLossGraphNode,
     "DynaTrainTrainingJobStatus": TrainingJobStatusNode,
 }
 
@@ -687,5 +809,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "DynaTrainTrainLoRA": "Train LoRA",
     "DynaTrainTrainLoRAAdvanced": "Train LoRA Advanced",
     "DynaTrainSaveLoRAWeights": "Save LoRA Weights",
+    "DynaTrainPlotLossGraph": "Plot Loss Graph",
     "DynaTrainTrainingJobStatus": "Training Job Status",
 }
