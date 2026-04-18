@@ -121,6 +121,10 @@ python -m compileall nodes.py trainers utils tests
 python -m unittest discover -s tests -v
 ```
 
+## License
+
+Apache-2.0. See [LICENSE](LICENSE).
+
 ## Status
 
 This project is in active iteration. The ComfyUI node surface is already usable for workflow construction, validation, planning, and LoRA payload chaining, while backend execution details are still evolving.
