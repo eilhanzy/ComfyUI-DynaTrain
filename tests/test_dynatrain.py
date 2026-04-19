@@ -334,6 +334,7 @@ class DynaTrainTests(unittest.TestCase):
                 sampler="euler_a",
                 sample_steps=20,
                 cfg_scale=7.0,
+                execute=False,
             )
         self.assertEqual(steps, 16)
         self.assertEqual(lora["steps"], 16)
@@ -380,6 +381,7 @@ class DynaTrainTests(unittest.TestCase):
                 existing_lora="[None]",
                 bucket_mode=False,
                 bypass_mode=False,
+                execute=False,
                 model=object(),
                 positive=[["cond", {"pooled_output": None}]],
                 latents={"samples": FakeTensor((1, 4, 64, 64))},

@@ -429,6 +429,7 @@ class TrainLoRANode:
                 ),
                 "sample_steps": ("INT", {"default": 20, "min": 1, "max": 150, "step": 1}),
                 "cfg_scale": ("FLOAT", {"default": 7.0, "min": 1.0, "max": 30.0, "step": 0.5}),
+                "execute": ("BOOLEAN", {"default": False}),
             }
         }
 
@@ -465,6 +466,7 @@ class TrainLoRANode:
         sampler: str,
         sample_steps: int,
         cfg_scale: float,
+        execute: bool,
     ) -> Tuple[Dict[str, Any], Dict[str, Any], int]:
         dataset_report = summarize_dataset(
             dataset_dir=dataset_dir,
@@ -515,7 +517,7 @@ class TrainLoRANode:
             resolution_y=resolution_y,
             batch_size_override=batch_size,
             gradient_accumulation_override=grad_accumulation_steps,
-            execute=False,
+            execute=execute,
             extra_args="",
             runtime_root="",
             model=model,
@@ -589,6 +591,7 @@ class TrainLoRAAdvancedNode:
                 "existing_lora": (list_lora_files(), {"default": "[None]"}),
                 "bucket_mode": ("BOOLEAN", {"default": False}),
                 "bypass_mode": ("BOOLEAN", {"default": False}),
+                "execute": ("BOOLEAN", {"default": False}),
             },
             "optional": {
                 "model": ("MODEL",),
@@ -624,6 +627,7 @@ class TrainLoRAAdvancedNode:
         existing_lora: str,
         bucket_mode: bool,
         bypass_mode: bool,
+        execute: bool,
         model: Any = None,
         positive: Any = None,
         latents: Any = None,
@@ -649,7 +653,7 @@ class TrainLoRAAdvancedNode:
             resolution_y=resolution_y,
             batch_size_override=batch_size_override,
             gradient_accumulation_override=gradient_accumulation_override,
-            execute=False,
+            execute=execute,
             extra_args="",
             runtime_root="",
             model=model,
