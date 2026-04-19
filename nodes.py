@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import textwrap
 from pathlib import Path
@@ -52,7 +53,28 @@ def _default_base_model_path(model: Any) -> str:
 
 
 def _default_backend_workdir() -> str:
-    return str(Path(__file__).resolve().parent)
+    return os.environ.get("DYNATRAIN_BACKEND_WORKDIR", str(Path(__file__).resolve().parent))
+
+
+def _backend_entrypoint_defaults() -> Dict[str, str]:
+    entrypoint_mode = os.environ.get("DYNATRAIN_BACKEND_MODE", "disabled").strip().lower() or "disabled"
+    if entrypoint_mode not in {"disabled", "module", "script"}:
+        entrypoint_mode = "disabled"
+
+    python_executable = os.environ.get("DYNATRAIN_BACKEND_PYTHON", sys.executable).strip() or sys.executable
+    module_name = os.environ.get("DYNATRAIN_BACKEND_MODULE", "").strip()
+    script_path = os.environ.get("DYNATRAIN_BACKEND_SCRIPT", "").strip()
+    if entrypoint_mode == "module" and not module_name:
+        entrypoint_mode = "disabled"
+    if entrypoint_mode == "script" and not script_path:
+        entrypoint_mode = "disabled"
+
+    return {
+        "python_executable": python_executable,
+        "entrypoint_mode": entrypoint_mode,
+        "module_name": module_name,
+        "script_path": script_path,
+    }
 
 
 def _pil_to_comfy_image(image: Any):
@@ -504,10 +526,7 @@ class TrainLoRANode:
             output_dir=_default_output_dir(),
             output_name=_default_output_name(dataset_dir),
             backend_workdir=_default_backend_workdir(),
-            python_executable=sys.executable,
-            entrypoint_mode="module",
-            module_name="onetrainer",
-            script_path="",
+            **_backend_entrypoint_defaults(),
             network_dim=rank,
             network_alpha=rank,
             learning_rate=learning_rate,
@@ -640,10 +659,7 @@ class TrainLoRAAdvancedNode:
             output_dir=_default_output_dir(),
             output_name=_default_output_name(validated_dataset.get("dataset_dir", ""), "dynatrain_advanced_lora"),
             backend_workdir=_default_backend_workdir(),
-            python_executable=sys.executable,
-            entrypoint_mode="module",
-            module_name="onetrainer",
-            script_path="",
+            **_backend_entrypoint_defaults(),
             network_dim=rank,
             network_alpha=rank,
             learning_rate=learning_rate,

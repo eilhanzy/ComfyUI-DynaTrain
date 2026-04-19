@@ -341,6 +341,53 @@ class DynaTrainTests(unittest.TestCase):
         self.assertEqual(loss_map["status"], "dry_run")
         self.assertEqual(lora["training_dtype"], "bf16")
 
+    def test_train_lora_node_execute_true_stays_spec_only_without_backend(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ.pop("DYNATRAIN_BACKEND_MODE", None)
+            os.environ.pop("DYNATRAIN_BACKEND_MODULE", None)
+            os.environ.pop("DYNATRAIN_BACKEND_SCRIPT", None)
+            os.environ.pop("DYNATRAIN_BACKEND_PYTHON", None)
+            node = self.TrainLoRANode()
+            lora, loss_map, steps = node.run(
+                model=object(),
+                latents={"samples": FakeTensor((1, 4, 64, 64))},
+                positive=[["cond", {"pooled_output": None}]],
+                dataset_dir=self._make_dataset_dir(tmp),
+                model_family="sd15",
+                batch_size=1,
+                grad_accumulation_steps=1,
+                steps=24,
+                learning_rate=0.0002,
+                rank=8,
+                resolution_x=512,
+                resolution_y=512,
+                optimizer="AdamW",
+                loss_function="MSE",
+                seed=7,
+                control_after_generate="randomize",
+                training_dtype="bf16",
+                lora_dtype="bf16",
+                quantized_backward=False,
+                algorithm="LoRA",
+                gradient_checkpointing=True,
+                checkpoint_depth=1,
+                offloading=False,
+                existing_lora="[None]",
+                bucket_mode=False,
+                bypass_mode=False,
+                sample_every_n_steps=10,
+                sample_prompts="portrait photo",
+                sampler="euler_a",
+                sample_steps=20,
+                cfg_scale=7.0,
+                execute=True,
+            )
+        self.assertEqual(steps, 24)
+        self.assertEqual(lora["status"], "dry_run")
+        self.assertFalse(lora["backend_ready"])
+        self.assertIn("No training backend is configured", lora["backend_check_message"])
+        self.assertEqual(loss_map["status"], "dry_run")
+
     def test_train_lora_advanced_returns_lora_payload(self):
         with tempfile.TemporaryDirectory() as tmp:
             validated_dataset = self._make_validated_dataset(tmp)
@@ -622,11 +669,11 @@ class DynaTrainTests(unittest.TestCase):
                     resolution_y=512,
                     batch_size_override=0,
                     gradient_accumulation_override=0,
-                    execute=True,
-                    extra_args="",
-                    runtime_root=str(Path(tmp) / "runtime"),
+                execute=True,
+                extra_args="",
+                runtime_root=str(Path(tmp) / "runtime"),
                 )
-        self.assertIn("Install OneTrainer", str(ctx.exception))
+        self.assertIn("Training backend module", str(ctx.exception))
 
     def test_dry_run_reports_backend_not_ready(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -667,7 +714,7 @@ class DynaTrainTests(unittest.TestCase):
                 runtime_root=str(Path(tmp) / "runtime"),
             )
         self.assertFalse(job["backend_ready"])
-        self.assertIn("Install OneTrainer", job["backend_check_message"])
+        self.assertIn("Training backend module", job["backend_check_message"])
 
     def test_missing_job_status_raises_clean_error(self):
         with tempfile.TemporaryDirectory() as tmp:

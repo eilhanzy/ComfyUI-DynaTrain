@@ -20,7 +20,7 @@ These presets follow the PDF design goal: train safer, not just faster.
 - Auto precision resolves to `FP16` unless BF16 support is explicitly enabled and VRAM is healthy.
 - `FP8` stays experimental and intentionally requires an opt-in flag.
 - Save precision defaults to the selected training precision, except that unsupported auto paths fall back to `FP16`.
-- OneTrainer launch plans receive these precision values in the generated config artifact and pass that config by default as `--config <path>`.
+- Generated launch plans receive these precision values in the config artifact and pass that config by default as `--config <path>` when an external backend is configured.
 
 ## Safety Rules Reflected In Code
 
@@ -30,7 +30,7 @@ These presets follow the PDF design goal: train safer, not just faster.
 - High accumulation values raise a VRAM safety warning.
 - Experimental or unstable precision requests raise explicit warnings.
 
-## OneTrainer Runtime
+## Runtime Mode
 
 - The internal launcher still supports dry-run and background job execution, but the ComfyUI-facing training nodes now expose a simplified, training-centric surface.
 - `Train LoRA` is the more workflow-oriented node with `model`, `latents`, `positive` inputs and direct `lora`, `loss_map`, `steps` outputs.
@@ -40,13 +40,16 @@ These presets follow the PDF design goal: train safer, not just faster.
 - Exposed dtype controls now cover `nvfp4`, `fp8`, `fp16`, `bf16`, and `fp32` for both training and LoRA weight precision.
 - `Save LoRA Weights` accepts the `lora` payload and writes a `.safetensors` file into the `loras` directory.
 - `Training Job Status` also exposes a `preview_image` output alongside loss and log details.
+- By default, the nodes run in backendless spec-only mode and still produce `lora`, `loss_map`, previews, config payloads, and runtime summaries.
 - Background jobs persist metadata under `runtime/jobs/<job_id>.json`.
 - Combined stdout/stderr logs are written to `runtime/logs/<job_id>.log`.
 - Preview assets are expected under `runtime/previews/<job_id>/`.
-- The generated OneTrainer config artifact is written under the selected `output_dir`.
+- The generated config artifact is written under the selected `output_dir`.
 - Generated training configs carry both `resolution_x` and `resolution_y`, plus a mirrored `resolution: {x, y}` block for clearer downstream mapping.
-- Entrypoints support both `python -m <module_name>` and `python <script_path>` launch styles.
-- v1 assumes the backend accepts `--config <generated_config_path>`.
-- If `execute=True` and the backend entrypoint is missing, the node now fails early with an install/path guidance message instead of spawning a broken background job.
+- Optional entrypoints support `disabled`, `python -m <module_name>`, and `python <script_path>` launch styles.
+- External backend wiring is controlled through `DYNATRAIN_BACKEND_MODE`, `DYNATRAIN_BACKEND_MODULE`, `DYNATRAIN_BACKEND_SCRIPT`, `DYNATRAIN_BACKEND_PYTHON`, and `DYNATRAIN_BACKEND_WORKDIR`.
+- v1 assumes an external backend accepts `--config <generated_config_path>`.
+- If `execute=True` while no backend is configured, the node safely stays in spec-only mode instead of throwing a launch error.
+- If `execute=True` and an explicitly configured backend entrypoint is missing, the node fails early with a path guidance message instead of spawning a broken background job.
 - Dry-run and status payloads also expose `backend_ready` and `backend_check_message` so backend availability is visible before launch.
 - `existing_lora` choices are sourced from the ComfyUI `loras` folder when available, with a local fallback to a repo `loras/` folder outside ComfyUI.

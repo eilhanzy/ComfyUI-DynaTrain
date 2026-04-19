@@ -8,7 +8,7 @@ The project focuses on three things:
 - precision and VRAM planning
 - LoRA-oriented training node ergonomics that are easier to wire into ComfyUI graphs
 
-The current implementation wraps a configurable trainer backend shape inspired by OneTrainer-style `--config` launches, while keeping the ComfyUI-facing nodes simpler and more training-centric.
+The current implementation defaults to a backendless spec-only flow, while still supporting optional external trainer launches through environment-based backend wiring.
 
 ## What Is Included
 
@@ -61,9 +61,9 @@ The current implementation wraps a configurable trainer backend shape inspired b
 ## Current Architecture Notes
 
 - The public ComfyUI nodes are simplified on purpose and hide backend path details.
-- Internally, the launcher still builds config artifacts and runtime metadata for a OneTrainer-like backend contract.
-- The current launcher assumes a backend that accepts `--config <path>`.
-- The ComfyUI-facing nodes are currently best understood as training-spec and workflow nodes unless a matching backend is installed and wired behind the scenes.
+- By default, `Train LoRA` and `Train LoRA Advanced` stay in spec-only mode even if `execute=true`.
+- Optional backend execution can be enabled with environment variables such as `DYNATRAIN_BACKEND_MODE`, `DYNATRAIN_BACKEND_MODULE`, `DYNATRAIN_BACKEND_SCRIPT`, and `DYNATRAIN_BACKEND_PYTHON`.
+- The optional launcher expects a backend that accepts `--config <path>`.
 
 ## Project Layout
 
@@ -110,6 +110,34 @@ If you are developing this node pack outside an existing ComfyUI Python environm
 pip install -r requirements.txt
 ```
 
+## Optional Backend Wiring
+
+The training nodes now work without a hardcoded backend. Out of the box they generate config/runtime payloads, previews, `lora` payloads, and `loss_map` outputs without requiring OneTrainer or any other trainer package.
+
+If you want `execute=true` to launch a real backend, set one of these environment configurations before starting ComfyUI:
+
+```bash
+export DYNATRAIN_BACKEND_MODE=module
+export DYNATRAIN_BACKEND_MODULE=your_backend_module
+export DYNATRAIN_BACKEND_PYTHON=/path/to/python
+```
+
+or
+
+```bash
+export DYNATRAIN_BACKEND_MODE=script
+export DYNATRAIN_BACKEND_SCRIPT=/path/to/train_backend.py
+export DYNATRAIN_BACKEND_PYTHON=/path/to/python
+```
+
+Optional:
+
+```bash
+export DYNATRAIN_BACKEND_WORKDIR=/path/to/backend/workdir
+```
+
+If no backend is configured, `backend_ready` stays `false` and execution remains in safe spec-only mode.
+
 ## Example Workflow Shape
 
 1. Run `Dataset Sanity Check`.
@@ -136,4 +164,4 @@ Apache-2.0. See [LICENSE](LICENSE).
 
 ## Status
 
-This project is in active iteration. The ComfyUI node surface is already usable for workflow construction, validation, planning, and LoRA payload chaining, while backend execution details are still evolving.
+This project is in active iteration. The ComfyUI node surface is already usable for workflow construction, validation, planning, LoRA payload chaining, and backendless spec generation, while optional backend execution details are still evolving.

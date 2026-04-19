@@ -98,6 +98,8 @@ def _build_entrypoint(
     module_name: str,
     script_path: str,
 ) -> List[str]:
+    if entrypoint_mode == "disabled":
+        return []
     command = [_ensure_required_text(python_executable, "Python executable")]
     if entrypoint_mode == "module":
         command.extend(["-m", _ensure_required_text(module_name, "Module name")])
@@ -149,15 +151,20 @@ def _build_backend_missing_message(
     module_name: str,
     script_path: str,
 ) -> str:
+    if entrypoint_mode == "disabled":
+        return (
+            "No training backend is configured. Leave execute disabled for spec-only mode, "
+            "or set DYNATRAIN_BACKEND_MODE plus the matching backend environment variables."
+        )
     if entrypoint_mode == "module":
         return (
-            f"OneTrainer backend module '{module_name}' was not found for python executable "
-            f"'{python_executable}'. Install OneTrainer in that environment or keep execute disabled "
-            "and use dry-run mode."
+            f"Training backend module '{module_name}' was not found for python executable "
+            f"'{python_executable}'. Install that backend in the same environment or keep execute disabled "
+            "and use spec-only mode."
         )
     return (
-        f"OneTrainer backend script was not found at '{script_path}'. Point script_path to a valid "
-        "backend entrypoint or keep execute disabled and use dry-run mode."
+        f"Training backend script was not found at '{script_path}'. Point script_path to a valid "
+        "backend entrypoint or keep execute disabled and use spec-only mode."
     )
 
 
@@ -168,11 +175,22 @@ def _inspect_backend_entrypoint(
     module_name: str,
     script_path: str,
 ) -> Dict[str, str | bool]:
+    if entrypoint_mode == "disabled":
+        return {
+            "backend_ready": False,
+            "backend_check_message": _build_backend_missing_message(
+                python_executable=python_executable,
+                entrypoint_mode=entrypoint_mode,
+                module_name=module_name,
+                script_path=script_path,
+            ),
+        }
+
     if not _python_executable_exists(python_executable):
         return {
             "backend_ready": False,
             "backend_check_message": (
-                f"Python executable '{python_executable}' was not found. Point the node to a valid interpreter or use dry-run mode."
+                f"Python executable '{python_executable}' was not found. Point the node to a valid interpreter or use spec-only mode."
             ),
         }
 
@@ -581,7 +599,7 @@ def prepare_training_run(
         )
     )
 
-    if not execute:
+    if not execute or entrypoint_mode == "disabled":
         return enrich_job_status(job)
 
     _validate_backend_entrypoint(
